@@ -187,7 +187,53 @@ Expected result:
 - continuous event printouts from synthetic generator
 - events reflect Silver-layer distributions
 
-## J. Troubleshooting quick guide
+## J. Streaming consumer + metric persistence (optional demo step)
+
+Open a second terminal and run:
+
+```bash
+python spark/streaming/streaming_job.py
+```
+
+Let producer + consumer run together for 1-2 minutes, then stop both with `Ctrl+C`.
+
+Expected result:
+- consumer logs `Processing Micro-Batch ...`
+- Bloom filter + reservoir sample lines keep updating
+- window metric writes are logged for each batch
+- Snowflake table `MART.MART_LIVE_STREAM_METRICS` receives rows
+
+Streaming metrics verification:
+
+```sql
+SELECT COUNT(*) AS total_metric_rows
+FROM MART.MART_LIVE_STREAM_METRICS;
+
+SELECT *
+FROM MART.MART_LIVE_STREAM_METRICS
+ORDER BY METRIC_TS DESC
+LIMIT 50;
+
+SELECT
+  METRIC_NAME,
+  COUNT(*) AS row_count,
+  ROUND(AVG(METRIC_VALUE), 4) AS avg_metric_value
+FROM MART.MART_LIVE_STREAM_METRICS
+GROUP BY METRIC_NAME
+ORDER BY METRIC_NAME;
+```
+
+Expected result:
+- `total_metric_rows` increases after each streaming run
+- includes metric names such as:
+  - `events_processed`
+  - `events_allowed_after_bloom`
+  - `bloom_duplicate_rate`
+  - `reservoir_size`
+  - `approx_unique_patients`
+  - `total_events_in_window`
+
+## K. Troubleshooting quick guide
 
 1. `Missing required environment variable`
    - re-export Snowflake env vars in current terminal.
@@ -198,9 +244,10 @@ Expected result:
 4. dbt source not found
    - verify Bronze table names exactly match source config (`*_RAW`).
 
-## K. Final expected state
+## L. Final expected state
 
 At successful completion:
 - Snowflake has populated Bronze/Silver/Gold/Mart tables,
 - model metrics are persisted in `MART_MODEL_METRICS`,
+- streaming metrics are persisted in `MART_LIVE_STREAM_METRICS`,
 - project is reproducible by any teammate following this runbook.

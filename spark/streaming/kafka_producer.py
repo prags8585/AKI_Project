@@ -9,8 +9,11 @@ import json
 import time
 import random
 import os
+import sys
 from datetime import datetime, timedelta
 import snowflake.connector
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 try:
     from confluent_kafka import Producer
@@ -20,10 +23,22 @@ except ImportError:
 
 from scripts.sf_env import snowflake_connect_kwargs
 
-SF_CONN = snowflake_connect_kwargs()
+try:
+    SF_CONN = snowflake_connect_kwargs()
+except RuntimeError as e:
+    SF_CONN = None
+    print(f"Warning: {e}. Falling back to built-in synthetic defaults.")
 
 def get_distributions():
     """Pull real clinical distributions from Snowflake Silver layer."""
+    if SF_CONN is None:
+        return {
+            "creat_mean": 1.2,
+            "creat_std": 0.4,
+            "urine_mean": 60.0,
+            "urine_std": 25.0,
+        }
+
     print("Fetching baseline distributions from Snowflake Silver layer...")
     conn = snowflake.connector.connect(**SF_CONN)
     cur = conn.cursor()
@@ -91,11 +106,13 @@ def main():
     print(f"Distributions loaded: {distributions}")
 
     if Producer is None:
-        producer = None
-        print("DRY-RUN mode (no Kafka)")
-    else:
-        producer = Producer({"bootstrap.servers": args.broker})
-        print(f"Connected to Kafka at {args.broker}")
+        raise SystemExit(
+            "Kafka producer dependency missing: install with `pip install confluent_kafka` "
+            "inside your active virtualenv, then rerun."
+        )
+
+    producer = Producer({"bootstrap.servers": args.broker})
+    print(f"Connected to Kafka at {args.broker}, topic={args.topic}")
 
     print("Starting infinite synthetic stream... (Ctrl+C to stop)")
     patient_pool   = list(range(9000000, 9000100))
@@ -107,9 +124,8 @@ def main():
             event      = generate_synthetic_event(patient_id, distributions, current_time)
             payload    = json.dumps(event)
 
-            if producer:
-                producer.produce(args.topic, payload.encode("utf-8"), callback=delivery_report)
-                producer.poll(0)
+            producer.produce(args.topic, payload.encode("utf-8"), callback=delivery_report)
+            producer.poll(0)
 
             print(f"PRODUCED -> {payload}")
             current_time += timedelta(minutes=random.randint(1, 15))
@@ -117,8 +133,7 @@ def main():
     except KeyboardInterrupt:
         print("\nStopping synthetic stream.")
     finally:
-        if producer:
-            producer.flush()
+        producer.flush()
 
 if __name__ == "__main__":
     main()
