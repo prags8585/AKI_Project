@@ -1,7 +1,7 @@
 import snowflake.connector
+from pathlib import Path
 from sf_env import snowflake_connect_kwargs
 
-FILE_PATH = 'file:///Users/prags/Desktop/AKI/DATA/ICU DATA/outputevents.csv'
 STAGE_FILE = 'outputevents.csv.gz'
 TABLE_NAME = 'OUTPUTEVENTS_RAW'
 
@@ -32,9 +32,10 @@ def main():
     print("2. Creating Stage (if needed)...")
     cur.execute("CREATE STAGE IF NOT EXISTS AKI_RAW_DATA")
 
-    print(f"3. Uploading {FILE_PATH} to Snowflake Stage (parallel=8)...")
+    file_path = (Path(__file__).resolve().parents[1] / "DATA" / "ICU DATA" / "outputevents.csv").as_posix()
+    print(f"3. Uploading file://{file_path} to Snowflake Stage (parallel=8)...")
     cur.execute(f"""
-        PUT '{FILE_PATH}'
+        PUT 'file://{file_path}'
         @AKI_DB.BRONZE.AKI_RAW_DATA
         AUTO_COMPRESS=TRUE
         PARALLEL=8

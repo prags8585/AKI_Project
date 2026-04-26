@@ -1,4 +1,5 @@
 import snowflake.connector
+from pathlib import Path
 from sf_env import snowflake_connect_kwargs
 
 def main():
@@ -38,10 +39,11 @@ def main():
     cur.execute("CREATE STAGE IF NOT EXISTS AKI_RAW_DATA")
 
     # Note: We must escape the space in 'Hospital Data' for the PUT command
-    cur.execute("""
-        PUT 'file:///Users/prags/Desktop/AKI/DATA/Hospital Data/labevents.csv' 
-        @AKI_DB.BRONZE.AKI_RAW_DATA 
-        AUTO_COMPRESS=TRUE 
+    data_path = (Path(__file__).resolve().parents[1] / "DATA" / "Hospital Data" / "labevents.csv").as_posix()
+    cur.execute(f"""
+        PUT 'file://{data_path}'
+        @AKI_DB.BRONZE.AKI_RAW_DATA
+        AUTO_COMPRESS=TRUE
         PARALLEL=8
     """)
 

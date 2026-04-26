@@ -15,7 +15,7 @@ This runbook is for teammates to run the project from scratch in Snowflake-backe
 ```bash
 cd /path/to/workspace
 git clone <repo-url>
-cd AKI
+cd AKI_Project
 
 /opt/homebrew/bin/python3.12 -m venv .venv312
 source .venv312/bin/activate
