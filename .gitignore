@@ -1,0 +1,46 @@
+# Local environments
+.venv/
+.venv312/
+.pdfvenv/
+.conda-env/
+.conda-cache/
+.conda-pkgs/
+
+# Python build/cache
+__pycache__/
+*.pyc
+
+# Local Spark/Hive artifacts
+metastore_db/
+spark-warehouse/
+derby.log
+
+# Local logs
+*.log
+
+# macOS
+.DS_Store
+
+# Secrets
+.env
+
+DATA/
+.venv/
+.venv312/
+.conda-env/
+.conda-cache/
+.conda-pkgs/
+.pdfvenv/
+metastore_db/
+spark-warehouse/
+
+# dbt generated
+dbt/aki_dbt/target/
+dbt/aki_dbt/.user.yml
+
+# GE generated outputs
+ge/results/*.csv
+ge/results/*.json
+
+# local/pdf assets (optional)
+Project Proposal Data 228 Group 6*.pdf
