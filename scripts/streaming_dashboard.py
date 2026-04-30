@@ -267,134 +267,267 @@ K-ANONYMITY<br>
 
 # ════════════════════════════════════════════════════════════════════════
 with tab_batch:
-    st.markdown("## 📊 Batch Pipeline & Clinical Logic")
+    st.markdown("## 📊 Model Registry & Analytical Outputs")
     
-    b_left, b_right = st.columns([2, 1])
-    
-    with b_left:
-        st.markdown("### 🏛️ Medallion Data Flow (Snowflake)")
-        st.markdown("""
-        The batch pipeline follows a **Medallion Architecture** implemented in Snowflake and transformed via **dbt** and **Spark**.
+    # 1. Model Registry from outputs/models/registry.json
+    try:
+        with open("outputs/models/registry.json", "r") as f:
+            registry = json.load(f)
         
-        | Layer | Tool | Purpose | Key Columns / Actions |
-        | :--- | :--- | :--- | :--- |
-        | **BRONZE** | Great Expectations | Raw Validation | `SUBJECT_ID`, `ITEMID`, `VALUE`. Checks for nulls, range (Cr: 0-20). |
-        | **SILVER** | dbt | Cleaning & Joins | Joins labs + outputevents. Standardizes units. Filters stay windows. |
-        | **GOLD** | Spark / dbt | Clinical Logic | Computes Baseline Cr, Rolling Deltas, and hourly KDIGO stages. |
-        | **MART** | Spark MLlib | Analysis & ML | Final labels, Model metrics, and prediction trajectories. |
-        """)
-        
-        st.markdown("### 🧬 Clinical Logic: KDIGO Staging")
-        st.markdown("""
-        The system implements the full **KDIGO 2012** definition using both Serum Creatinine (SCr) and Urine Output (UO).
-        
-        *   **Stage 1**: SCr increase ≥ 0.3 mg/dL within 48h OR 1.5–1.9x baseline. UO < 0.5 mL/kg/h for 6–12h.
-        *   **Stage 2**: SCr 2.0–2.9x baseline. UO < 0.5 mL/kg/h for ≥ 12h.
-        *   **Stage 3**: SCr ≥ 3.0x baseline OR increase to ≥ 4.0 mg/dL. UO < 0.3 mL/kg/h for ≥ 24h OR Anuria ≥ 12h.
-        """)
-
-    with b_right:
-        st.markdown("### 🤖 Model Performance")
-        m1, m2 = st.columns(2)
-        m1.metric("GBT AUROC", "0.9918", "State-of-Art")
-        m2.metric("LR AUROC", "0.9743", "Baseline")
-        
-        st.markdown("#### Feature Importance (GBT)")
-        feat_data = {
-            "Feature": ["Cr/Baseline Ratio", "Urine Output 6h", "Cr Delta 48h", "Age", "Unit Type"],
-            "Importance": [42, 28, 15, 10, 5]
-        }
-        st.bar_chart(pd.DataFrame(feat_data).set_index("Feature"))
-        
-        st.markdown("#### Dataset Statistics")
-        st.code("""
-Total Stays: 53,432
-Total Events: 330M+ (MIMIC-IV)
-Avg. Labs/Stay: 42
-AKI Prevalence: 18.4%
-        """, language="yaml")
+        st.markdown("### 📜 Model Performance Registry")
+        for model in registry:
+            with st.expander(f"Model: {model['model_name']} ({model['timestamp']})", expanded=True):
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("AUROC", f"{model['metrics']['auroc']:.4f}")
+                col2.metric("AUPRC", f"{model['metrics']['auprc']:.4f}")
+                col3.metric("F1 Score", f"{model['metrics']['f1']:.4f}")
+                col4.metric("Accuracy", f"{model['metrics']['accuracy']:.4f}")
+                
+                st.markdown("**Parameters:** " + ", ".join([f"`{k}: {v}`" for k, v in model['parameters'].items()]))
+                st.markdown(f"**Lineage:** Logic: `{model['lineage']['dbt_logic_version']}` | Data: `{model['lineage']['training_data_file']}`")
+    except Exception as e:
+        st.warning(f"Could not load model registry: {e}")
 
     st.markdown("---")
-    st.markdown("### 📈 Feature Distributions (Batch vs Live)")
-    d1, d2 = st.columns(2)
-    with d1:
-        st.markdown("**Creatinine Distribution (mg/dL)**")
-        # Simulated KDE data
-        chart_data = pd.DataFrame(np.random.normal([1.2, 1.4], [0.3, 0.4], size=(100, 2)), columns=['Historical', 'Live'])
-        st.line_chart(chart_data)
-    with d2:
-        st.markdown("**Urine Output Distribution (mL/kg/hr)**")
-        chart_data_uo = pd.DataFrame(np.random.normal([0.8, 0.75], [0.2, 0.25], size=(100, 2)), columns=['Historical', 'Live'])
-        st.line_chart(chart_data_uo)
+    
+    # 2. Confusion Matrices & Evaluation Visuals
+    st.markdown("### 📉 Comprehensive Evaluation Suite")
+    
+    # ROC and LR/GBT Confusion Matrices
+    row1_c1, row1_c2, row1_c3 = st.columns(3)
+    with row1_c1:
+        st.markdown("**ROC Curves (Comparative)**")
+        if os.path.exists("outputs/metrics/roc_curves.png"):
+            st.image("outputs/metrics/roc_curves.png", use_container_width=True)
+    with row1_c2:
+        st.markdown("**GBT Confusion Matrix**")
+        if os.path.exists("docs/reports/model_analysis/confusion_matrix_gradient_boosting.png"):
+            st.image("docs/reports/model_analysis/confusion_matrix_gradient_boosting.png", use_container_width=True)
+    with row1_c3:
+        st.markdown("**LR Confusion Matrix**")
+        if os.path.exists("docs/reports/model_analysis/confusion_matrix_logistic_regression.png"):
+            st.image("docs/reports/model_analysis/confusion_matrix_logistic_regression.png", use_container_width=True)
+
+    # Correlation and Covariance
+    st.markdown("<br>", unsafe_allow_html=True)
+    row2_c1, row2_c2 = st.columns(2)
+    with row2_c1:
+        st.markdown("**Feature Correlation Matrix**")
+        if os.path.exists("docs/reports/model_analysis/correlation_matrix.png"):
+            st.image("docs/reports/model_analysis/correlation_matrix.png", use_container_width=True)
+    with row2_c2:
+        st.markdown("**Feature Covariance Matrix**")
+        if os.path.exists("docs/reports/model_analysis/covariance_matrix.png"):
+            st.image("docs/reports/model_analysis/covariance_matrix.png", use_container_width=True)
+
+    st.markdown("---")
+    
+    # 3. Model Metric CSV Summaries
+    st.markdown("### 📋 Detailed Metric Summaries")
+    m_col1, m_col2 = st.columns(2)
+    with m_col1:
+        st.markdown("**Gradient Boosting Metrics**")
+        if os.path.exists("outputs/metrics/gradient_boosting_metrics.csv"):
+            st.dataframe(pd.read_csv("outputs/metrics/gradient_boosting_metrics.csv"), use_container_width=True, hide_index=True)
+    with m_col2:
+        st.markdown("**Logistic Regression Metrics**")
+        if os.path.exists("outputs/metrics/logistic_regression_metrics.csv"):
+            st.dataframe(pd.read_csv("outputs/metrics/logistic_regression_metrics.csv"), use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+    
+    # 3. Feature Distributions from docs/reports/feature_distributions
+    st.markdown("### 📈 Clinical Feature Distributions")
+    f1, f2, f3 = st.columns(3)
+    dist_imgs = {
+        "Creatinine": "docs/reports/feature_distributions/distribution_creatinine.png",
+        "Urine Output": "docs/reports/feature_distributions/distribution_urine.png",
+        "Hours since Admit": "docs/reports/feature_distributions/distribution_hours.png"
+    }
+    cols = [f1, f2, f3]
+    for i, (label, path) in enumerate(dist_imgs.items()):
+        with cols[i]:
+            st.markdown(f"**{label}**")
+            if os.path.exists(path):
+                st.image(path, use_container_width=True)
+            else:
+                st.info(f"{label} distribution not found.")
+
+    st.markdown("---")
+    
+    # 4. Mart Data Preview
+    st.markdown("### 💎 Data Mart Preview (Sample Metrics)")
+    try:
+        if os.path.exists("outputs/mart/dp_unit_metrics.csv"):
+            df_mart = pd.read_csv("outputs/mart/dp_unit_metrics.csv")
+            st.dataframe(df_mart, use_container_width=True, hide_index=True)
+    except:
+        st.info("Mart metrics CSV not found.")
 
 # ════════════════════════════════════════════════════════════════════════
 with tab_arch:
-    st.markdown("## 🕸️ System Architecture & Data Lineage")
+    st.markdown("## 🧬 End-to-End Clinical Architecture")
     
     st.markdown("""
     <style>
-    @keyframes flow {
-      0% { transform: translateX(-20px); opacity: 0; }
-      50% { opacity: 1; }
-      100% { transform: translateX(20px); opacity: 0; }
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
     }
-    .arrow { display: inline-block; animation: flow 2s infinite linear; color: #22d3ee; font-weight: bold; }
-    .node { background: #1e293b; border: 1px solid #334155; padding: 15px; border-radius: 8px; text-align: center; }
-    .arch-container { display: flex; align-items: center; justify-content: space-around; padding: 20px; background: #0f172a; border-radius: 12px; margin-bottom: 30px; }
+    @keyframes scaleIn {
+        from { transform: scale(0.9); opacity: 0; }
+        to { transform: scale(1); opacity: 1; }
+    }
+    @keyframes drawLine {
+        from { height: 0; }
+        to { height: 60px; }
+    }
+    .tree-wrapper { 
+        display: flex; flex-direction: column; align-items: center; 
+        padding: 40px; background: #020617; border-radius: 20px; 
+        font-family: 'Inter', sans-serif; overflow: hidden;
+    }
+    
+    .root-node { 
+        background: linear-gradient(135deg, #22d3ee, #06b6d4); color: #020617; 
+        padding: 22px 45px; border-radius: 40px; font-weight: 900; font-size: 1.3rem; 
+        position: relative; z-index: 10; box-shadow: 0 0 30px rgba(34, 211, 238, 0.4);
+        animation: scaleIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        border: 2px solid #fff;
+    }
+    .root-node::after { 
+        content: ''; position: absolute; top: 100%; left: 50%; width: 2px; 
+        height: 60px; background: #334155; animation: drawLine 1s ease forwards;
+    }
+    
+    .split-container { display: flex; width: 100%; justify-content: space-between; position: relative; margin-top: 60px; }
+    .split-container::before { 
+        content: ''; position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: #334155;
+    }
+
+    .tree-branch { width: 45%; display: flex; flex-direction: column; align-items: center; position: relative; }
+    .tree-branch::before { content: ''; position: absolute; top: 0; width: 2px; height: 30px; background: #334155; }
+    .left-branch::before { left: 50%; }
+    .right-branch::before { right: 50%; }
+
+    .branch-tag { 
+        margin-top: 30px; padding: 12px 25px; border-radius: 12px; 
+        font-weight: 800; font-size: 0.9rem; letter-spacing: 1px; margin-bottom: 35px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+        animation: fadeInUp 0.8s ease 0.2s forwards; opacity: 0;
+    }
+    .batch-tag { background: #1e3a8a; color: #93c5fd; }
+    .stream-tag { background: #581c87; color: #e9d5ff; }
+
+    .node-card { 
+        background: #0f172a; border: 1px solid #1e293b; padding: 22px; 
+        border-radius: 18px; width: 100%; margin-bottom: 45px; position: relative; 
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        animation: fadeInUp 0.8s ease forwards; opacity: 0;
+    }
+    .node-card:hover { 
+        border-color: #22d3ee; transform: translateY(-8px) scale(1.02); 
+        box-shadow: 0 15px 40px rgba(0,0,0,0.6); z-index: 5;
+    }
+    .node-card::after { 
+        content: ''; position: absolute; top: 100%; left: 50%; width: 2px; height: 45px; background: #334155;
+    }
+    .node-card:last-child::after { display: none; }
+
+    .node-header { display: flex; align-items: center; gap: 15px; margin-bottom: 14px; }
+    .node-icon { font-size: 26px; }
+    .node-name { font-weight: 700; color: #f1f5f9; font-size: 1.05rem; }
+    .node-body { color: #94a3b8; font-size: 0.88rem; line-height: 1.6; }
+    .node-tech { 
+        display: inline-block; margin-top: 12px; padding: 4px 10px; border-radius: 6px; 
+        background: #1e293b; color: #22d3ee; font-size: 0.75rem; font-weight: 700; 
+        text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid rgba(34, 211, 238, 0.2);
+    }
+    
+    /* Staggered animations for cards */
+    .tree-branch .node-card:nth-child(2) { animation-delay: 0.4s; }
+    .tree-branch .node-card:nth-child(4) { animation-delay: 0.6s; }
+    .tree-branch .node-card:nth-child(6) { animation-delay: 0.8s; }
+    .tree-branch .node-card:nth-child(8) { animation-delay: 1.0s; }
+    .tree-branch .node-card:nth-child(10) { animation-delay: 1.2s; }
     </style>
-    """, unsafe_allow_html=True)
+    
+    <div class="tree-wrapper">
+        <div class="root-node">🏥 MIMIC-IV CLINICAL DATA SOURCE</div>
+        
+        <div class="split-container">
+            <!-- BATCH BRANCH (LEFT) -->
+            <div class="tree-branch left-branch">
+                <div class="branch-tag batch-tag">BATCH ANALYTICAL PIPELINE</div>
+                
+                <div class="node-card">
+                    <div class="node-header"><span class="node-icon">✅</span><span class="node-name">Data Quality Gate</span></div>
+                    <div class="node-body">Multi-stage validation of clinical feeds. Implements checks for nulls, referential integrity, and physiological bounds (e.g., Creatinine 0.1-20 mg/dL).</div>
+                    <div class="node-tech">Great Expectations</div>
+                </div>
+                
+                <div class="node-card">
+                    <div class="node-header"><span class="node-icon">🥉</span><span class="node-name">Bronze (Raw Validated)</span></div>
+                    <div class="node-body">Source-of-truth storage for validated raw events. Maintains high-fidelity data history for regulatory compliance and audit trails.</div>
+                    <div class="node-tech">Snowflake + Parquet</div>
+                </div>
 
-    st.subheader("🛠️ Batch Architecture (The Brain)")
-    st.markdown("""
-    <div class="arch-container">
-        <div class="node">📂 <b>MIMIC-IV</b><br><small>Raw CSVs</small></div>
-        <div class="arrow">➤➤</div>
-        <div class="node">✅ <b>GE Gate</b><br><small>Quality</small></div>
-        <div class="arrow">➤➤</div>
-        <div class="node">❄️ <b>Snowflake</b><br><small>Bronze Layer</small></div>
-        <div class="arrow">➤➤</div>
-        <div class="node">🔧 <b>dbt</b><br><small>Silver (Clean)</small></div>
-        <div class="arrow">➤➤</div>
-        <div class="node">⚡ <b>Spark</b><br><small>Gold (Features)</small></div>
-        <div class="arrow">➤➤</div>
-        <div class="node">🤖 <b>MLlib</b><br><small>Model Mart</small></div>
+                <div class="node-card">
+                    <div class="node-header"><span class="node-icon">🥈</span><span class="node-name">Silver (Clinical Clean)</span></div>
+                    <div class="node-body">Normalizes heterogeneous units (e.g., mL vs L), aligns timestamps across different monitors, and maps patient IDs to ICU stay windows.</div>
+                    <div class="node-tech">dbt-snowflake</div>
+                </div>
+
+                <div class="node-card">
+                    <div class="node-header"><span class="node-icon">🥇</span><span class="node-name">Gold (Clinical Features)</span></div>
+                    <div class="node-body">Reifies KDIGO 2012 staging logic. Computes baseline creatinine, Cr ratio, and rolling 6h/24h urine output windows per kg/hr.</div>
+                    <div class="node-tech">PySpark Engine</div>
+                </div>
+
+                <div class="node-card">
+                    <div class="node-header"><span class="node-icon">🤖</span><span class="node-name">Model Training & Registry</span></div>
+                    <div class="node-body">Trains GBT and LR models with lineage tracking. Persists metrics and model artifacts to the registry for downstream streaming inference.</div>
+                    <div class="node-tech">Spark MLlib + MLflow</div>
+                </div>
+            </div>
+
+            <!-- STREAMING BRANCH (RIGHT) -->
+            <div class="tree-branch right-branch">
+                <div class="branch-tag stream-tag">REAL-TIME WARNING SYSTEM</div>
+                
+                <div class="node-card">
+                    <div class="node-header"><span class="node-icon">📨</span><span class="node-name">Kafka Event Ingress</span></div>
+                    <div class="node-body">Replays clinical events from the Silver layer in chronological order. Simulates live ICU telemetry across multiple patient bedside monitors.</div>
+                    <div class="node-tech">Kafka Clusters</div>
+                </div>
+
+                <div class="node-card">
+                    <div class="node-header"><span class="node-icon">🔄</span><span class="node-name">Spark Micro-Batching</span></div>
+                    <div class="node-body">Processes incoming Kafka records with low latency. Maintains stateful patient windows to update feature vectors in real-time.</div>
+                    <div class="node-tech">Structured Streaming</div>
+                </div>
+
+                <div class="node-card">
+                    <div class="node-header"><span class="node-icon">🧬</span><span class="node-name">Streaming Estimators</span></div>
+                    <div class="node-body">Implements Bloom (Dedup), Flajolet-Martin (Patient Counting), and DGIM (Windowed Counting) for efficient stream analysis.</div>
+                    <div class="node-tech">Approximation Algos</div>
+                </div>
+
+                <div class="node-card">
+                    <div class="node-header"><span class="node-icon">🔍</span><span class="node-name">XAI: LSH Twin Search</span></div>
+                    <div class="node-body">Queries the Gold layer using Locality Sensitive Hashing to find 'Clinical Twins' and explain predicted risk via historical similarity.</div>
+                    <div class="node-tech">LSH / FAISS</div>
+                </div>
+
+                <div class="node-card">
+                    <div class="node-header"><span class="node-icon">🚨</span><span class="node-name">Live Warning Dashboard</span></div>
+                    <div class="node-body">Final UI for proactive monitoring. Triggers alerts and displays per-patient AKI progression risk 48 hours before physiological stage shifts.</div>
+                    <div class="node-tech">Streamlit / Plotly</div>
+                </div>
+            </div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
-
-    st.subheader("⚡ Streaming Architecture (The Warning System)")
-    st.markdown("""
-    <div class="arch-container">
-        <div class="node">🥈 <b>Silver Data</b><br><small>Events Source</small></div>
-        <div class="arrow" style="animation-delay: 0.5s">➤➤</div>
-        <div class="node">📨 <b>Kafka</b><br><small>Topic: aki.live</small></div>
-        <div class="arrow" style="animation-delay: 1s">➤➤</div>
-        <div class="node">🔄 <b>Spark Stream</b><br><small>Logic Processing</small></div>
-        <div class="arrow" style="animation-delay: 1.5s">➤➤</div>
-        <div class="node">🧬 <b>Algorithms</b><br><small>Bloom/FM/DGIM</small></div>
-        <div class="arrow" style="animation-delay: 2s">➤➤</div>
-        <div class="node">🧬 <b>XAI (LSH)</b><br><small>Clinical Twins</small></div>
-        <div class="arrow" style="animation-delay: 2.5s">➤➤</div>
-        <div class="node">🚨 <b>Dashboard</b><br><small>Real-time UI</small></div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("### 🧱 Technical Stack Details")
-    a1, a2, a3 = st.columns(3)
-    with a1:
-        st.info("**Infrastructure**")
-        st.write("- **Snowflake**: Cloud Data Warehouse")
-        st.write("- **Docker**: Containerized Kafka/Zookeeper")
-        st.write("- **Python 3.12**: Core Runtime")
-    with a2:
-        st.success("**Data Engineering**")
-        st.write("- **dbt-snowflake**: SQL Orchestration")
-        st.write("- **PySpark 4.1**: Distributed Processing")
-        st.write("- **Great Expectations**: Data Contracts")
-    with a3:
-        st.warning("**Advanced Analytics**")
-        st.write("- **LSH**: Locality Sensitive Hashing")
-        st.write("- **SHAP**: Model Explainability")
-        st.write("- **Bloom/DGIM**: Streaming Estimators")
 
 if pm.running["producer"] or pm.running["consumer"]:
     time.sleep(1); st.rerun()
