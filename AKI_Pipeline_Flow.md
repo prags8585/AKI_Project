@@ -1,242 +1,243 @@
-# AKI Trajectory Pipeline — Corrected Architecture Flow
-> DATA 228 · Group 6 — Nikitha, Karthik, Charvee, Nikhil, Naveen
+# AKI-Trajectory Final Implementation Guide (MIMIC + Full Architecture)
 
 ---
 
-## 🎯 Goal
+# 1. Project Goal
 
-Build a **real-time early warning system** that predicts progression from early AKI
-(KDIGO Stage 1–2) to severe AKI (Stage 3) or dialysis within **48–72 hours**, using:
-
-- **MIMIC-IV** → development dataset
-- **eICU (synthetic demo)** → external validation dataset
-- **Full KDIGO labels** = creatinine + urine output (not creatinine-only)
+Build a system that:
+- Monitors ICU patients using MIMIC data
+- Computes KDIGO stage (current kidney condition)
+- Predicts future deterioration (Stage 3 / dialysis)
+- Simulates real-time updates using Kafka + Spark
 
 ---
 
-## 🏛️ Storage Architecture — Medallion Layers
+# 2. Architecture Overview (IMPORTANT)
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  BRONZE LAYER   │  Raw GE-validated data  │  Apache Iceberg     │
-├─────────────────────────────────────────────────────────────────┤
-│  SILVER LAYER   │  Cleaned by dbt         │  Apache Iceberg     │
-├─────────────────────────────────────────────────────────────────┤
-│  GOLD LAYER     │  KDIGO-labeled features │  Apache Iceberg     │
-└─────────────────────────────────────────────────────────────────┘
+We use a **layered data architecture**:
+
+```text
+Bronze → Silver → Gold → Mart
 ```
 
-All three layers live in **Apache Iceberg** (versioned, ACID, time-travel capable).
+## 🔹 Bronze (Raw Layer)
+- Raw MIMIC data
+- After basic validation (Great Expectations)
+
+## 🔹 Silver (Cleaned Layer)
+- Cleaned + standardized data
+- Joined tables (creatinine + urine + patient)
+
+## 🔹 Gold (Feature Layer)
+- Engineered features
+- KDIGO labels
+
+## 🔹 Mart (Final Output Layer)
+- Model predictions
+- Patient summary tables
+- Visualization-ready data
 
 ---
 
-## 🔁 Full End-to-End Architecture Flow
+# 3. Tools Mapping
 
+| Tool | Role |
+|------|------|
+| Great Expectations | Data validation (Bronze) |
+| dbt | Transformation (Bronze → Silver → Gold) |
+| Spark (Batch) | Feature engineering + KDIGO |
+| Iceberg | Storage (all layers) |
+| Kafka | Streaming data pipeline |
+| Spark Streaming | Real-time processing |
+| ML Models | Prediction |
+| Streaming Algorithms | Efficient stream handling |
+
+---
+
+# 4. Batch Pipeline (Training Pipeline)
+
+## Step 1 — Ingestion + Validation
+- Load MIMIC raw files
+- Apply Great Expectations:
+  - creatinine range check
+  - no negative urine
+  - no missing IDs
+
+👉 Output → Bronze layer (Iceberg)
+
+---
+
+## Step 2 — Cleaning + Joining (dbt)
+
+dbt models:
+
+- staging → clean tables
+- intermediate → join tables
+- marts → structured outputs
+
+👉 Output → Silver layer
+
+---
+
+## Step 3 — Feature Engineering (Spark)
+
+Create:
+- baseline creatinine
+- creatinine ratio
+- creatinine delta
+- urine windows (6h, 12h, 24h)
+- normalized urine (mL/kg/hr)
+
+👉 Output → Gold layer
+
+---
+
+## Step 4 — KDIGO Labeling
+
+Apply rules:
+- Stage 1
+- Stage 2
+- Stage 3
+
+👉 Output → Gold layer
+
+---
+
+## Step 5 — Model Training
+
+Target:
+Will patient reach Stage 3 in next 48h?
+
+Models:
+- Logistic Regression
+- Gradient Boosted Trees
+
+👉 Output → Mart layer
+
+---
+
+## Step 6 — Reporting
+
+- KDIGO distributions
+- feature plots
+- model metrics
+
+👉 Output → Mart layer
+
+---
+
+# 5. Streaming Pipeline
+
+## Step 1 — Data Source
+
+Generate synthetic events OR replay MIMIC timeline
+
+---
+
+## Step 2 — Kafka
+
+Kafka receives events:
+- patient_id
+- event_time
+- event_type
+- value
+
+---
+
+## Step 3 — Spark Streaming
+
+Spark:
+- reads Kafka
+- parses events
+- updates patient state
+- recomputes features
+- recomputes KDIGO
+- applies model
+
+---
+
+## Step 4 — Streaming Algorithms
+
+Used inside Spark:
+
+- Bloom Filter → remove duplicates
+- DGIM → approximate window counts (demo)
+- Flajolet-Martin → distinct counts
+- Reservoir Sampling → sampling
+
+---
+
+## Step 5 — Output
+
+Save to:
+- Mart layer (Iceberg)
+- real-time dashboard (optional)
+
+---
+
+# 6. dbt Role
+
+```text
+Raw → staging → intermediate → marts
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                          RAW INPUT DATA                                      │
-│   MIMIC-IV CSVs (330M+ events)        Synthetic eICU CSVs                   │
-│   (labs, vitals, fluids, meds)        (labs, vitals, fluids, meds)           │
-└──────────────────────────┬───────────────────────────┘
-                           │
-                           ▼
-          ┌────────────────────────────────────┐
-          │     GREAT EXPECTATIONS (GE)        │  ← Quality Gate #1
-          │  ✔ creatinine in realistic range   │
-          │  ✔ no negative urine output        │
-          │  ✔ no missing patient IDs          │
-          │  ✔ valid timestamps                │
-          │  ✔ enough urine docs per hospital  │
-          └────────────────┬───────────────────┘
-                           │  reject bad rows
-                           ▼
-          ┌────────────────────────────────────┐
-          │         BRONZE LAYER               │
-          │   (raw but GE-validated data)      │
-          │         Apache Iceberg             │
-          └────────────────┬───────────────────┘
-                           │
-                           ▼
-          ┌────────────────────────────────────┐
-          │              dbt                   │
-          │  - normalize units across datasets │
-          │  - join tables (labs + vitals +    │
-          │    fluids + meds)                  │
-          │  - standardize timestamps          │
-          │  - remove duplicates               │
-          │  - map MIMIC ↔ eICU schemas        │
-          └────────────────┬───────────────────┘
-                           │
-                           ▼
-          ┌────────────────────────────────────┐
-          │         SILVER LAYER               │
-          │   (clean, trusted, joined data)    │
-          │         Apache Iceberg             │
-          └────────────────┬───────────────────┘
-                           │
-              ┌────────────┴─────────────┐
-              │                          │
-              ▼                          ▼
-    ═══════════════════        ══════════════════════
-    ║   BATCH PATH      ║      ║  STREAMING PATH    ║
-    ═══════════════════        ══════════════════════
-              │                          │
-              ▼                          ▼
-    ┌─────────────────┐        ┌──────────────────────┐
-    │  dbt + Spark SQL│        │   Kafka Producer      │
-    │                 │        │                       │
-    │  - baseline     │        │  Replays Silver layer │
-    │    creatinine   │        │  events in correct    │
-    │  - creatinine   │        │  patient time order   │
-    │    ratio/deltas │        │  (simulates live ICU) │
-    │  - rolling urine│        │                       │
-    │    windows      │        │  One topic per type:  │
-    │  - KDIGO Stage  │        │  labs / vitals /      │
-    │    0–3 labeling │        │  fluids / meds        │
-    └────────┬────────┘        └──────────┬───────────┘
-             │                            │
-             ▼                            ▼
-    ┌─────────────────┐        ┌──────────────────────┐
-    │   GOLD LAYER    │        │ Spark Structured      │
-    │                 │        │ Streaming Consumer    │
-    │  KDIGO-labeled  │        │                       │
-    │  hourly feature │        │  - reads Kafka events │
-    │  store          │        │  - updates rolling    │
-    │  Apache Iceberg │        │    creatinine/urine   │
-    └────────┬────────┘        │    per patient/hour   │
-             │                 │                       │
-             ▼                 │  Streaming Algorithms:│
-    ┌─────────────────┐        │  ✦ DGIM              │
-    │  Model Training │        │    (urine output      │
-    │  (Spark MLlib)  │        │     sliding window)   │
-    │                 │        │  ✦ Flajolet-Martin   │
-    │  - Logistic     │        │    (distinct lab      │
-    │    Regression   │        │     draw sketches)    │
-    │  - Gradient     │        │  ✦ Bloom Filter      │
-    │    Boosted Trees│        │    (Kafka dedup)      │
-    │  tracked via    │        │  ✦ Reservoir Sampling│
-    │  MLflow         │        │    (balanced batches) │
-    └────────┬────────┘        └──────────┬───────────┘
-             │                            │
-             ▼                            ▼
-    ┌─────────────────┐        ┌──────────────────────┐
-    │   EVALUATION    │        │  Live Risk Scores     │
-    │                 │        │  (hourly, 0–1)        │
-    │  - AUROC, AUPRC │        │  written back to      │
-    │  - Calibration  │        │  Apache Iceberg       │
-    │  - eICU 208-    │        └──────────────────────┘
-    │    hospital     │
-    │    validation   │
-    │  - SHAP         │
-    │  - Subgroup     │
-    │    fairness     │
-    └────────┬────────┘
-             │
-             ▼
-    ┌─────────────────┐
-    │  GE OUTPUT CHECK│  ← Quality Gate #2
-    │  (validate that │
-    │   model outputs │
-    │   are sane)     │
-    └────────┬────────┘
-             │
-             ▼
-    ┌─────────────────┐
-    │ PRIVACY &       │
-    │ FAIRNESS        │
-    │  - K-Anonymity  │
-    │    (k ≥ 5)      │
-    │  - Differential │
-    │    Privacy      │
-    │    (Google DP)  │
-    └────────┬────────┘
-             │
-             ▼
-    ┌─────────────────┐
-    │  FINAL REPORT   │
-    │  SLIDES + DEMO  │
-    └─────────────────┘
+
+Used ONLY in batch pipeline.
+
+---
+
+# 7. Iceberg Role
+
+Stores:
+- Bronze (raw validated)
+- Silver (cleaned)
+- Gold (features + KDIGO)
+- Mart (final outputs)
+
+NOT used for:
+- streaming checkpoints
+
+---
+
+# 8. Model vs Algorithms
+
+| Component | Role |
+|----------|------|
+| KDIGO | current condition |
+| Model | future prediction |
+| Streaming algorithms | efficiency |
+
+---
+
+# 9. Final Flow
+
+```text
+Raw MIMIC
+→ Bronze (GE validation)
+→ Silver (dbt cleaning)
+→ Gold (features + KDIGO)
+→ Mart (model + outputs)
+→ Kafka
+→ Spark Streaming
+→ Live updates
 ```
 
 ---
 
-## 🔑 Key Clarifications (Common Misconceptions)
+# 10. UI (Optional but in design)
 
-### ❌ WRONG: KDIGO labeling happens inside the streaming path
-### ✅ RIGHT: KDIGO labeling happens in the **BATCH path** (dbt + Spark SQL → Gold layer)
-
-The streaming path does **NOT** relabel KDIGO from scratch.
-It reads events in real time, updates rolling features (creatinine/urine per hour),
-and applies the **already-trained model** to compute a live risk score.
+3 tabs:
+1. Real-time results
+2. Batch analysis
+3. Architecture view
 
 ---
 
-### ❌ WRONG: Great Expectations runs only once at the start
-### ✅ RIGHT: GE runs at **two checkpoints**
+# 11. Final Summary
 
-| Checkpoint | When | What it checks |
-|---|---|---|
-| **GE #1 — Ingestion gate** | Before Bronze layer | Raw data quality (ranges, nulls, timestamps) |
-| **GE #2 — Output gate** | After model scoring | That model outputs are valid and sane |
+This project combines:
+- medical logic (KDIGO)
+- data engineering (dbt + Iceberg)
+- streaming systems (Kafka + Spark)
+- machine learning (prediction)
 
----
-
-### ❌ WRONG: There are only 2 layers (raw + clean)
-### ✅ RIGHT: There are **3 layers** (Medallion architecture)
-
-| Layer | Content | Technology |
-|---|---|---|
-| **Bronze** | GE-validated raw data | Apache Iceberg |
-| **Silver** | dbt-cleaned & joined | Apache Iceberg |
-| **Gold** | KDIGO-labeled feature store | Apache Iceberg |
-
----
-
-## 📦 4 Streaming Algorithms — Where & Why
-
-These live **inside Spark Structured Streaming** (streaming path only):
-
-| Algorithm | Purpose |
-|---|---|
-| **DGIM** | Count urine output events in a sliding time window without storing all events |
-| **Flajolet-Martin** | Estimate distinct lab draw types per patient using sketching (memory efficient) |
-| **Bloom Filter** | Deduplicate Kafka events — avoid reprocessing the same event twice |
-| **Reservoir Sampling** | Build balanced mini-batches for online/incremental model training |
-
----
-
-## 📊 Technology Stack Summary
-
-| Component | Technology |
-|---|---|
-| Versioned storage | Apache Iceberg (on Parquet) |
-| ETL / Cleaning | dbt → Spark SQL |
-| Data Quality | Great Expectations (2 checkpoints) |
-| Batch processing | Apache Spark SQL + DataFrame API |
-| Streaming ingest | Apache Kafka (1 topic per event type) |
-| Stream processing | Spark Structured Streaming |
-| Modeling | Spark MLlib (LR + GBT) |
-| Experiment tracking | MLflow (linked to dbt run ID) |
-| Privacy | K-Anonymity (k≥5) + Differential Privacy (Google DP) |
-| Fairness | SHAP + subgroup analysis |
-| Environment | Docker + Conda + GitHub |
-
----
-
-## ✅ What's Done vs ❌ What's Left
-
-| Stage | Status |
-|---|---|
-| Synthetic eICU batch pipeline (clean → features → KDIGO) | ✅ Done |
-| MIMIC-IV batch pipeline scripts | ✅ Written, needs to run |
-| Kafka producer + topic setup | ✅ Written, needs live Kafka env |
-| Spark Structured Streaming consumer (core) | ✅ Written, needs live Spark + Kafka |
-| MLlib model scripts (LR + GBT) | ✅ Written, not yet trained |
-| Evaluation metric code | ✅ Written, no results yet |
-| Great Expectations full setup | ⚠️ Basic checks only |
-| dbt models | ❌ Folder exists, nothing written |
-| Apache Iceberg storage | ❌ Using plain CSVs currently |
-| 4 Streaming algorithms (DGIM, FM, BF, RS) | ❌ Not yet added to streaming job |
-| MLflow tracking | ❌ Not implemented |
-| Privacy & fairness (K-Anon, DP, SHAP) | ❌ Not implemented |
-| Final report / slides / Docker demo | ❌ Not done |
+to build a real-time AKI monitoring system.
