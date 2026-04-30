@@ -86,6 +86,13 @@ def main():
         ["model_name", "auroc"]
     )
     write_sf(metrics_df, "MART", "MART_MODEL_METRICS")
+    
+    # Save the models locally
+    model_dir = os.path.join(os.path.dirname(__file__), "saved_models")
+    lr_model.write().overwrite().save(os.path.join(model_dir, "lr_model"))
+    gbt_model.write().overwrite().save(os.path.join(model_dir, "gbt_model"))
+    print(f"Models saved locally in {model_dir}")
+    
     spark.stop()
 
 if __name__ == "__main__":

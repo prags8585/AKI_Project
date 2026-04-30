@@ -4,6 +4,10 @@
 from __future__ import annotations
 
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if it exists
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 
 def _need(name: str) -> str:
