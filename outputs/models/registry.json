@@ -1,0 +1,27 @@
+[
+    {
+        "run_id": "aki_run_668856f7",
+        "model_name": "Gradient Boosting AKI Predictor",
+        "timestamp": "2026-04-29T17:10:37.135832",
+        "lineage": {
+            "training_data_file": "outputs/tables/synthetic_eicu_training_set.csv",
+            "data_version_hash": "668856f7d7c4067523955437a9df3f102b0f254ef23e65b947ca1f4e5ac53520",
+            "dbt_logic_version": "v1.2.0"
+        },
+        "parameters": {
+            "n_estimators": 100,
+            "learning_rate": 0.1,
+            "max_depth": 3
+        },
+        "metrics": {
+            "model": "gradient_boosting",
+            "auroc": 0.9917859206004536,
+            "auprc": 0.9953419874472422,
+            "precision": 0.9901181941484208,
+            "recall": 0.941588354523678,
+            "f1": 0.9652436720816018,
+            "accuracy": 0.9574074074074074,
+            "brier_score": 0.0321804521253816
+        }
+    }
+]
