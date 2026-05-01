@@ -22,12 +22,6 @@ import math
 from collections import deque
 import pandas as pd
 import numpy as np
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col
-from pyspark.sql.types import (
-    StructType, StructField, StringType, DoubleType, LongType
-)
-
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 try:
     from src.features.similarity_search import ClinicalLSH
@@ -441,48 +435,75 @@ def process_event(data: dict, batch_id: int):
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mock", action="store_true", help="Read from local file instead of Kafka")
+    args = parser.parse_args()
+
     init_lsh()
 
-    try:
-        from confluent_kafka import Consumer, KafkaError
-    except ImportError:
-        print("ERROR: confluent_kafka not installed. Run: pip install confluent-kafka")
-        sys.exit(1)
+    mock_mode = args.mock
+    mock_file = os.path.join("tmp", "mock_stream.jsonl")
 
-    kafka_broker = "localhost:9092"   # always localhost — bypasses Docker advertised listener
-    kafka_topic  = os.getenv("KAFKA_TOPIC", "aki.live.events")
+    consumer = None
+    if not mock_mode:
+        try:
+            from confluent_kafka import Consumer, KafkaError
+            kafka_broker = "localhost:9092"
+            kafka_topic  = os.getenv("KAFKA_TOPIC", "aki.live.events")
+            consumer = Consumer({
+                "bootstrap.servers":  kafka_broker,
+                "group.id":           "aki-trace-consumer",
+                "auto_offset.reset":  "latest",
+                "enable.auto.commit": True,
+            })
+            consumer.subscribe([kafka_topic])
+            print(f"[KAFKA] Subscribed to {kafka_topic} @ {kafka_broker}")
+        except Exception as e:
+            print(f"[KAFKA] Connection failed: {e}. Switching to MOCK mode.")
+            mock_mode = True
 
-    consumer = Consumer({
-        "bootstrap.servers":  kafka_broker,
-        "group.id":           "aki-trace-consumer",
-        "auto.offset.reset":  "latest",
-        "enable.auto.commit": True,
-    })
-    consumer.subscribe([kafka_topic])
-    print(f"[KAFKA] Subscribed to {kafka_topic} @ {kafka_broker}")
+    if mock_mode:
+        print(f"[MOCK] Reading events from {mock_file}")
+        if not os.path.exists(mock_file):
+            os.makedirs("tmp", exist_ok=True)
+            with open(mock_file, "w") as f: pass
+
     print("[STREAM] Polling for messages... (Ctrl+C to stop)")
 
     batch_id   = 0
     batch_buf  = []
-    BATCH_SIZE = 10          # emit a batch every N messages or every FLUSH_SEC seconds
+    BATCH_SIZE = 10
     FLUSH_SEC  = 3.0
     last_flush = time.time()
+    
+    mock_pos = 0
 
     try:
         while True:
-            msg = consumer.poll(timeout=1.0)
-
-            if msg is None:
-                pass  # no message yet
-            elif msg.error():
-                if msg.error().code() != KafkaError._PARTITION_EOF:
-                    print(f"[KAFKA ERROR] {msg.error()}")
+            msg_data = None
+            
+            if not mock_mode and consumer:
+                msg = consumer.poll(timeout=1.0)
+                if msg and not msg.error():
+                    try:
+                        msg_data = json.loads(msg.value().decode("utf-8"))
+                    except: pass
             else:
-                try:
-                    data = json.loads(msg.value().decode("utf-8"))
-                    batch_buf.append(data)
-                except Exception as e:
-                    print(f"[PARSE ERROR] {e}")
+                # Mock Mode: Read from file
+                if os.path.exists(mock_file):
+                    with open(mock_file, "r") as f:
+                        lines = f.readlines()
+                        if len(lines) > mock_pos:
+                            for i in range(mock_pos, len(lines)):
+                                try:
+                                    batch_buf.append(json.loads(lines[i].strip()))
+                                except: pass
+                            mock_pos = len(lines)
+                time.sleep(1.0)
+
+            if msg_data:
+                batch_buf.append(msg_data)
 
             # Flush batch when full or time elapsed
             if batch_buf and (len(batch_buf) >= BATCH_SIZE or time.time() - last_flush >= FLUSH_SEC):
@@ -498,7 +519,8 @@ def main():
     except KeyboardInterrupt:
         print("\n[STREAM] Shutdown requested.")
     finally:
-        consumer.close()
+        if consumer:
+            consumer.close()
         print("[STREAM] Consumer closed.")
 
 

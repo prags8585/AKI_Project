@@ -100,19 +100,25 @@ def main():
     parser.add_argument("--broker",          default=os.getenv("KAFKA_BROKER", "localhost:9092"))
     parser.add_argument("--topic",           default=os.getenv("KAFKA_TOPIC", "aki.live.events"))
     parser.add_argument("--events_per_sec",  type=int, default=5)
+    parser.add_argument("--mock",            action="store_true", help="Write to local file instead of Kafka")
     args = parser.parse_args()
 
     distributions = get_distributions()
     print(f"Distributions loaded: {distributions}")
 
-    if Producer is None:
-        raise SystemExit(
-            "Kafka producer dependency missing: install with `pip install confluent_kafka` "
-            "inside your active virtualenv, then rerun."
-        )
+    producer = None
+    if not args.mock:
+        try:
+            producer = Producer({"bootstrap.servers": args.broker})
+            print(f"Connected to Kafka at {args.broker}, topic={args.topic}")
+        except Exception as e:
+            print(f"Kafka connection failed: {e}. Switching to MOCK mode (file-based).")
+            args.mock = True
 
-    producer = Producer({"bootstrap.servers": args.broker})
-    print(f"Connected to Kafka at {args.broker}, topic={args.topic}")
+    if args.mock:
+        mock_file = os.path.join("tmp", "mock_stream.jsonl")
+        os.makedirs("tmp", exist_ok=True)
+        print(f"MOCK MODE: Writing events to {mock_file}")
 
     print("Starting infinite synthetic stream... (Ctrl+C to stop)")
     patient_pool   = list(range(9000000, 9000100))
@@ -124,8 +130,13 @@ def main():
             event      = generate_synthetic_event(patient_id, distributions, current_time)
             payload    = json.dumps(event)
 
-            producer.produce(args.topic, payload.encode("utf-8"), callback=delivery_report)
-            producer.poll(0)
+            if producer:
+                producer.produce(args.topic, payload.encode("utf-8"), callback=delivery_report)
+                producer.poll(0)
+            
+            if args.mock:
+                with open(mock_file, "a") as f:
+                    f.write(payload + "\n")
 
             print(f"PRODUCED -> {payload}")
             current_time += timedelta(minutes=random.randint(1, 15))

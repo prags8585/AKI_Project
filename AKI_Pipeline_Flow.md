@@ -13,7 +13,7 @@ Build a system that:
 ---
 
 # 2. Architecture Overview (IMPORTANT)
-
+S
 We use a **layered data architecture**:
 
 ```text
@@ -46,7 +46,7 @@ Bronze → Silver → Gold → Mart
 | Great Expectations | Data validation (Bronze) |
 | dbt | Transformation (Bronze → Silver → Gold) |
 | Spark (Batch) | Feature engineering + KDIGO |
-| Iceberg | Storage (all layers) |
+| Snowflake | Storage (all layers) |
 | Kafka | Streaming data pipeline |
 | Spark Streaming | Real-time processing |
 | ML Models | Prediction |
@@ -63,7 +63,7 @@ Bronze → Silver → Gold → Mart
   - no negative urine
   - no missing IDs
 
-👉 Output → Bronze layer (Iceberg)
+👉 Output → Bronze layer (Snowflake)
 
 ---
 
@@ -170,7 +170,7 @@ Used inside Spark:
 ## Step 5 — Output
 
 Save to:
-- Mart layer (Iceberg)
+- Mart layer (Snowflake)
 - real-time dashboard (optional)
 
 ---
@@ -185,7 +185,7 @@ Used ONLY in batch pipeline.
 
 ---
 
-# 7. Iceberg Role
+# 7. Snowflake Role
 
 Stores:
 - Bronze (raw validated)
@@ -236,7 +236,7 @@ Raw MIMIC
 
 This project combines:
 - medical logic (KDIGO)
-- data engineering (dbt + Iceberg)
+- data engineering (dbt + Snowflake)
 - streaming systems (Kafka + Spark)
 - machine learning (prediction)
 

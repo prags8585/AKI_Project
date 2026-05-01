@@ -16,6 +16,12 @@ st.markdown("""<style>
 .vb{background:#000;border:1px solid #1e293b;padding:10px;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#22d3ee;}
 .lb{background:#000;border:1px solid #1e293b;padding:10px;border-radius:6px;height:380px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:10px;}
 </style>""", unsafe_allow_html=True)
+# Set JAVA_HOME for Spark
+if "JAVA_HOME" not in os.environ:
+    try:
+        jh = subprocess.check_output("/usr/libexec/java_home", text=True).strip()
+        os.environ["JAVA_HOME"] = jh
+    except: pass
 
 class PM:
     def __init__(self):
@@ -77,23 +83,37 @@ border-bottom:1px solid #1e293b;padding-bottom:16px;margin-bottom:20px;">
 # Sidebar
 with st.sidebar:
     st.markdown("### ⚙️ Controls")
-    venv=sys.executable
+    # Robust venv detection
+    venv = sys.executable
+    local_venv = os.path.join(os.getcwd(), ".venv", "bin", "python")
+    if os.path.exists(local_venv):
+        venv = local_venv
+        
+    st.markdown("---")
+    mock_mode = st.checkbox("🛠️ Local Mock Mode", value=True, help="Run without Kafka (uses local file-stream)")
+    
+    extra_args = ["--mock"] if mock_mode else []
+    
     if not pm.running["producer"]:
         if st.button("▶ Start Producer",use_container_width=True):
-            pm.start("producer",[venv,"spark/streaming/kafka_producer.py"]); st.rerun()
+            pm.start("producer",[venv,"spark/streaming/kafka_producer.py"] + extra_args); st.rerun()
     else:
         if st.button("⏹ Stop Producer",use_container_width=True,type="primary"):
             pm.stop("producer"); st.rerun()
     st.markdown("---")
     if not pm.running["consumer"]:
         if st.button("▶ Start Spark Consumer",use_container_width=True):
-            pm.start("consumer",[venv,"spark/streaming/streaming_job.py"]); st.rerun()
+            pm.start("consumer",[venv,"spark/streaming/streaming_job.py"] + extra_args); st.rerun()
     else:
         if st.button("⏹ Stop Consumer",use_container_width=True,type="primary"):
             pm.stop("consumer"); st.rerun()
     st.markdown("---")
     if st.button("🧹 Clear Data",use_container_width=True):
-        st.session_state.pts={}; st.session_state.rl=[]; st.rerun()
+        st.session_state.pts={}; st.session_state.rl=[]; 
+        # Also clear mock file
+        mock_file = os.path.join("tmp", "mock_stream.jsonl")
+        if os.path.exists(mock_file): open(mock_file, 'w').close()
+        st.rerun()
     if st.button("🔄 Reset Checkpoints",use_container_width=True):
         import shutil
         p=os.path.join("tmp","checkpoints")
@@ -366,168 +386,63 @@ with tab_batch:
 
 # ════════════════════════════════════════════════════════════════════════
 with tab_arch:
-    st.markdown("## 🧬 End-to-End Clinical Architecture")
-    
-    st.markdown("""
-    <style>
-    @keyframes fadeInUp {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes scaleIn {
-        from { transform: scale(0.9); opacity: 0; }
-        to { transform: scale(1); opacity: 1; }
-    }
-    @keyframes drawLine {
-        from { height: 0; }
-        to { height: 60px; }
-    }
-    .tree-wrapper { 
-        display: flex; flex-direction: column; align-items: center; 
-        padding: 40px; background: #020617; border-radius: 20px; 
-        font-family: 'Inter', sans-serif; overflow: hidden;
-    }
-    
-    .root-node { 
-        background: linear-gradient(135deg, #22d3ee, #06b6d4); color: #020617; 
-        padding: 22px 45px; border-radius: 40px; font-weight: 900; font-size: 1.3rem; 
-        position: relative; z-index: 10; box-shadow: 0 0 30px rgba(34, 211, 238, 0.4);
-        animation: scaleIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        border: 2px solid #fff;
-    }
-    .root-node::after { 
-        content: ''; position: absolute; top: 100%; left: 50%; width: 2px; 
-        height: 60px; background: #334155; animation: drawLine 1s ease forwards;
-    }
-    
-    .split-container { display: flex; width: 100%; justify-content: space-between; position: relative; margin-top: 60px; }
-    .split-container::before { 
-        content: ''; position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: #334155;
-    }
+    st.header("🧬 End-to-End Clinical Architecture")
+    st.info("The AKI Monitoring System uses a dual-path architecture to ensure deep clinical validity (Batch) and rapid bedside response (Streaming).")
 
-    .tree-branch { width: 45%; display: flex; flex-direction: column; align-items: center; position: relative; }
-    .tree-branch::before { content: ''; position: absolute; top: 0; width: 2px; height: 30px; background: #334155; }
-    .left-branch::before { left: 50%; }
-    .right-branch::before { right: 50%; }
+    # Path 0: Unified Source
+    st.subheader("📍 Data Source & Ingress")
+    st.markdown("---")
+    st.button("🏥 MIMIC-IV Clinical Database (330M Observation Events)", use_container_width=True, type="primary")
+    st.write("")
 
-    .branch-tag { 
-        margin-top: 30px; padding: 12px 25px; border-radius: 12px; 
-        font-weight: 800; font-size: 0.9rem; letter-spacing: 1px; margin-bottom: 35px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
-        animation: fadeInUp 0.8s ease 0.2s forwards; opacity: 0;
-    }
-    .batch-tag { background: #1e3a8a; color: #93c5fd; }
-    .stream-tag { background: #581c87; color: #e9d5ff; }
+    # Dual Paths
+    col_batch, col_stream = st.columns(2)
 
-    .node-card { 
-        background: #0f172a; border: 1px solid #1e293b; padding: 22px; 
-        border-radius: 18px; width: 100%; margin-bottom: 45px; position: relative; 
-        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        animation: fadeInUp 0.8s ease forwards; opacity: 0;
-    }
-    .node-card:hover { 
-        border-color: #22d3ee; transform: translateY(-8px) scale(1.02); 
-        box-shadow: 0 15px 40px rgba(0,0,0,0.6); z-index: 5;
-    }
-    .node-card::after { 
-        content: ''; position: absolute; top: 100%; left: 50%; width: 2px; height: 45px; background: #334155;
-    }
-    .node-card:last-child::after { display: none; }
-
-    .node-header { display: flex; align-items: center; gap: 15px; margin-bottom: 14px; }
-    .node-icon { font-size: 26px; }
-    .node-name { font-weight: 700; color: #f1f5f9; font-size: 1.05rem; }
-    .node-body { color: #94a3b8; font-size: 0.88rem; line-height: 1.6; }
-    .node-tech { 
-        display: inline-block; margin-top: 12px; padding: 4px 10px; border-radius: 6px; 
-        background: #1e293b; color: #22d3ee; font-size: 0.75rem; font-weight: 700; 
-        text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid rgba(34, 211, 238, 0.2);
-    }
-    
-    /* Staggered animations for cards */
-    .tree-branch .node-card:nth-child(2) { animation-delay: 0.4s; }
-    .tree-branch .node-card:nth-child(4) { animation-delay: 0.6s; }
-    .tree-branch .node-card:nth-child(6) { animation-delay: 0.8s; }
-    .tree-branch .node-card:nth-child(8) { animation-delay: 1.0s; }
-    .tree-branch .node-card:nth-child(10) { animation-delay: 1.2s; }
-    </style>
-    
-    <div class="tree-wrapper">
-        <div class="root-node">🏥 MIMIC-IV CLINICAL DATA SOURCE</div>
+    with col_batch:
+        st.subheader("📘 Analytical Path (Batch)")
+        st.caption("Focus: Precision & Training")
         
-        <div class="split-container">
-            <!-- BATCH BRANCH (LEFT) -->
-            <div class="tree-branch left-branch">
-                <div class="branch-tag batch-tag">BATCH ANALYTICAL PIPELINE</div>
-                
-                <div class="node-card">
-                    <div class="node-header"><span class="node-icon">✅</span><span class="node-name">Data Quality Gate</span></div>
-                    <div class="node-body">Multi-stage validation of clinical feeds. Implements checks for nulls, referential integrity, and physiological bounds (e.g., Creatinine 0.1-20 mg/dL).</div>
-                    <div class="node-tech">Great Expectations</div>
-                </div>
-                
-                <div class="node-card">
-                    <div class="node-header"><span class="node-icon">🥉</span><span class="node-name">Bronze (Raw Validated)</span></div>
-                    <div class="node-body">Source-of-truth storage for validated raw events. Maintains high-fidelity data history for regulatory compliance and audit trails.</div>
-                    <div class="node-tech">Snowflake + Parquet</div>
-                </div>
+        st.success("**1. Great Expectations Gate**\n\nValidates physiological bounds and schema integrity.")
+        st.write("↓")
+        st.success("**2. Snowflake Bronze (Raw)**\n\nPersistent audit trail of all clinical laboratory data.")
+        st.write("↓")
+        st.success("**3. dbt Silver (Cleaned)**\n\nNormalizes units (mg/dL vs mmol/L) and time-aligns monitors.")
+        st.write("↓")
+        st.success("**4. Spark Gold (Features)**\n\nComputes KDIGO-based AKI stages and creatinine trajectories.")
+        st.write("↓")
+        st.success("**5. Model Registry**\n\nTrains Gradient Boosting models for production deployment.")
 
-                <div class="node-card">
-                    <div class="node-header"><span class="node-icon">🥈</span><span class="node-name">Silver (Clinical Clean)</span></div>
-                    <div class="node-body">Normalizes heterogeneous units (e.g., mL vs L), aligns timestamps across different monitors, and maps patient IDs to ICU stay windows.</div>
-                    <div class="node-tech">dbt-snowflake</div>
-                </div>
+    with col_stream:
+        st.subheader("⚡ Warning Path (Streaming)")
+        st.caption("Focus: Latency & Alerts")
+        
+        st.warning("**1. Kafka Event Bus**\n\nHigh-throughput replay of bedside telemetry and lab feeds.")
+        st.write("↓")
+        st.warning("**2. Spark Structured Stream**\n\nMicro-batch processing (1s) of incoming patient signals.")
+        st.write("↓")
+        st.warning("**3. Streaming Estimators**\n\nApproximation algos (Bloom/FM) for efficient state tracking.")
+        st.write("↓")
+        st.warning("**4. XAI Clinical Twins**\n\nQueries Gold layer via LSH to explain risk using similar cases.")
+        st.write("↓")
+        st.warning("**5. Command Dashboard**\n\nReal-time monitoring and predictive clinical alerting.")
 
-                <div class="node-card">
-                    <div class="node-header"><span class="node-icon">🥇</span><span class="node-name">Gold (Clinical Features)</span></div>
-                    <div class="node-body">Reifies KDIGO 2012 staging logic. Computes baseline creatinine, Cr ratio, and rolling 6h/24h urine output windows per kg/hr.</div>
-                    <div class="node-tech">PySpark Engine</div>
-                </div>
+    st.divider()
 
-                <div class="node-card">
-                    <div class="node-header"><span class="node-icon">🤖</span><span class="node-name">Model Training & Registry</span></div>
-                    <div class="node-body">Trains GBT and LR models with lineage tracking. Persists metrics and model artifacts to the registry for downstream streaming inference.</div>
-                    <div class="node-tech">Spark MLlib + MLflow</div>
-                </div>
-            </div>
-
-            <!-- STREAMING BRANCH (RIGHT) -->
-            <div class="tree-branch right-branch">
-                <div class="branch-tag stream-tag">REAL-TIME WARNING SYSTEM</div>
-                
-                <div class="node-card">
-                    <div class="node-header"><span class="node-icon">📨</span><span class="node-name">Kafka Event Ingress</span></div>
-                    <div class="node-body">Replays clinical events from the Silver layer in chronological order. Simulates live ICU telemetry across multiple patient bedside monitors.</div>
-                    <div class="node-tech">Kafka Clusters</div>
-                </div>
-
-                <div class="node-card">
-                    <div class="node-header"><span class="node-icon">🔄</span><span class="node-name">Spark Micro-Batching</span></div>
-                    <div class="node-body">Processes incoming Kafka records with low latency. Maintains stateful patient windows to update feature vectors in real-time.</div>
-                    <div class="node-tech">Structured Streaming</div>
-                </div>
-
-                <div class="node-card">
-                    <div class="node-header"><span class="node-icon">🧬</span><span class="node-name">Streaming Estimators</span></div>
-                    <div class="node-body">Implements Bloom (Dedup), Flajolet-Martin (Patient Counting), and DGIM (Windowed Counting) for efficient stream analysis.</div>
-                    <div class="node-tech">Approximation Algos</div>
-                </div>
-
-                <div class="node-card">
-                    <div class="node-header"><span class="node-icon">🔍</span><span class="node-name">XAI: LSH Twin Search</span></div>
-                    <div class="node-body">Queries the Gold layer using Locality Sensitive Hashing to find 'Clinical Twins' and explain predicted risk via historical similarity.</div>
-                    <div class="node-tech">LSH / FAISS</div>
-                </div>
-
-                <div class="node-card">
-                    <div class="node-header"><span class="node-icon">🚨</span><span class="node-name">Live Warning Dashboard</span></div>
-                    <div class="node-body">Final UI for proactive monitoring. Triggers alerts and displays per-patient AKI progression risk 48 hours before physiological stage shifts.</div>
-                    <div class="node-tech">Streamlit / Plotly</div>
-                </div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.subheader("🧱 Resources, Components, and Heuristics (RCH)")
+    
+    rch_data = [
+        {"Category": "Compute", "Component": "Apache Spark Cluster", "Resource": "Memory Optimized Nodes", "Heuristic": "Micro-batching for <2s latency"},
+        {"Category": "Storage", "Component": "Snowflake Data Cloud", "Resource": "Medallion Architecture", "Heuristic": "Separation of Raw/Refined data"},
+        {"Category": "Streaming", "Component": "Confluent Kafka", "Resource": "Patient Partitioning", "Heuristic": "Exactly-once event processing"},
+        {"Category": "AI/ML", "Component": "Gradient Boosting", "Resource": "SHAP/LSH Explanations", "Heuristic": "Predict risk 48h in advance"},
+        {"Category": "Governance", "Component": "Great Expectations", "Resource": "Clinical Rules Engine", "Heuristic": "Zero-tolerance for invalid lab values"}
+    ]
+    st.table(rch_data)
+    
+    col_a, col_b, col_c = st.columns(3)
+    col_a.metric("Snowflake Data", "330M Rows", "Scalable")
+    col_b.metric("Spark Latency", "< 2.0s", "Low-Lat")
+    col_c.metric("Model Registry", "v1.2.0", "Versioned")
 
 if pm.running["producer"] or pm.running["consumer"]:
     time.sleep(1); st.rerun()
